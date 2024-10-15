@@ -1,55 +1,53 @@
 package org.gradle.profiler.mutations;
 
-import com.typesafe.config.Config;
 import org.apache.commons.io.FileUtils;
 import org.gradle.profiler.BuildContext;
 import org.gradle.profiler.BuildInvoker;
 import org.gradle.profiler.BuildMutator;
 import org.gradle.profiler.ConfigUtil;
-import org.gradle.profiler.InvocationSettings;
 import org.gradle.profiler.ScenarioContext;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 
-public abstract class AbstractCleanupMutator implements BuildMutator {
+public abstract class AbstractScheduledMutator implements BuildMutator {
 
-    private final CleanupSchedule schedule;
+    private final Schedule schedule;
 
-    public AbstractCleanupMutator(CleanupSchedule schedule) {
+    public AbstractScheduledMutator(Schedule schedule) {
         this.schedule = schedule;
     }
 
     @Override
     public void validate(BuildInvoker invoker) {
-        if (schedule != CleanupSchedule.SCENARIO && !invoker.allowsCleanupBetweenBuilds()) {
+        if (schedule != Schedule.SCENARIO && !invoker.allowsMutationBetweenBuilds()) {
             throw new IllegalStateException(this + " is not allowed to be executed between builds with invoker " + invoker);
         }
     }
 
     @Override
     public void beforeBuild(BuildContext context) {
-        if (schedule == CleanupSchedule.BUILD) {
-            cleanup();
+        if (schedule == Schedule.BUILD) {
+            executeOnSchedule();
         }
     }
 
     @Override
     public void beforeScenario(ScenarioContext context) {
-        if (schedule == CleanupSchedule.SCENARIO) {
-            cleanup();
+        if (schedule == Schedule.SCENARIO) {
+            executeOnSchedule();
         }
     }
 
     @Override
     public void beforeCleanup(BuildContext context) {
-        if (schedule == CleanupSchedule.CLEANUP) {
-            cleanup();
+        if (schedule == Schedule.CLEANUP) {
+            executeOnSchedule();
         }
     }
 
-    abstract protected void cleanup();
+    abstract protected void executeOnSchedule();
 
     protected static void delete(File f) {
         try {
@@ -66,14 +64,14 @@ public abstract class AbstractCleanupMutator implements BuildMutator {
     protected static abstract class Configurator implements BuildMutatorConfigurator {
         @Override
         public BuildMutator configure(String key, BuildMutatorConfiguratorSpec spec) {
-            CleanupSchedule schedule = ConfigUtil.enumValue(spec.getScenario(), key, CleanupSchedule.class, null);
+            Schedule schedule = ConfigUtil.enumValue(spec.getScenario(), key, Schedule.class, null);
             if (schedule == null) {
-                throw new IllegalArgumentException("Schedule for cleanup is not specified");
+                throw new IllegalArgumentException("Schedule is not specified");
             }
-            return newInstance(spec.getScenario(), spec.getScenarioName(), spec.getInvocationSettings(), key, schedule);
+            return newInstance(spec, key, schedule);
         }
 
-        protected abstract BuildMutator newInstance(Config scenario, String scenarioName, InvocationSettings settings, String key, CleanupSchedule schedule);
+        protected abstract BuildMutator newInstance(BuildMutatorConfiguratorSpec spec, String key, Schedule schedule);
     }
 
     @Override
@@ -81,7 +79,7 @@ public abstract class AbstractCleanupMutator implements BuildMutator {
         return getClass().getSimpleName() + "(" + schedule + ")";
     }
 
-    public enum CleanupSchedule {
+    public enum Schedule {
         SCENARIO, CLEANUP, BUILD
     }
 }

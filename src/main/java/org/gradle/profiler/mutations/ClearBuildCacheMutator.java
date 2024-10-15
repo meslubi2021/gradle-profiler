@@ -1,8 +1,6 @@
 package org.gradle.profiler.mutations;
 
-import com.typesafe.config.Config;
 import org.gradle.profiler.BuildMutator;
-import org.gradle.profiler.InvocationSettings;
 
 import java.io.File;
 import java.util.Arrays;
@@ -10,13 +8,13 @@ import java.util.Objects;
 
 public class ClearBuildCacheMutator extends AbstractCacheCleanupMutator {
 
-    public ClearBuildCacheMutator(File gradleUserHome, CleanupSchedule schedule) {
+    public ClearBuildCacheMutator(File gradleUserHome, Schedule schedule) {
         super(gradleUserHome, schedule, "build-cache-");
     }
 
     @Override
     protected void cleanupCacheDir(File cacheDir) {
-        Arrays.stream(Objects.requireNonNull(cacheDir.listFiles(ClearBuildCacheMutator::shouldRemoveFile))).forEach(AbstractCleanupMutator::delete);
+        Arrays.stream(Objects.requireNonNull(cacheDir.listFiles(ClearBuildCacheMutator::shouldRemoveFile))).forEach(AbstractScheduledMutator::delete);
     }
 
     private static boolean shouldRemoveFile(File file) {
@@ -24,10 +22,10 @@ public class ClearBuildCacheMutator extends AbstractCacheCleanupMutator {
         return file.getName().length() == 32 || file.getName().endsWith(".db");
     }
 
-    public static class Configurator extends AbstractCleanupMutator.Configurator {
+    public static class Configurator extends AbstractScheduledMutator.Configurator {
         @Override
-        protected BuildMutator newInstance(Config scenario, String scenarioName, InvocationSettings settings, String key, CleanupSchedule schedule) {
-            return new ClearBuildCacheMutator(settings.getGradleUserHome(), schedule);
+        protected BuildMutator newInstance(BuildMutatorConfiguratorSpec spec, String key, Schedule schedule) {
+            return new ClearBuildCacheMutator(spec.getGradleUserHome(), schedule);
         }
     }
 }

@@ -2,7 +2,6 @@ package org.gradle.profiler.mutations;
 
 import org.gradle.profiler.BuildMutator;
 import org.gradle.profiler.CompositeBuildMutator;
-import org.gradle.profiler.InvocationSettings;
 
 import java.io.File;
 import java.lang.reflect.InvocationTargetException;
@@ -21,12 +20,11 @@ public class FileChangeMutatorConfigurator implements BuildMutatorConfigurator {
     @Override
     public BuildMutator configure(String key, BuildMutatorConfiguratorSpec spec) {
         List<BuildMutator> mutatorsForKey = new ArrayList<>();
-        InvocationSettings settings = spec.getInvocationSettings();
-        for (File sourceFileToChange : sourceFiles(spec.getScenario(), spec.getScenarioName(), settings.getProjectDir(), key)) {
+        for (File sourceFileToChange : sourceFiles(spec.getScenario(), spec.getScenarioName(), spec.getProjectDir(), key)) {
             mutatorsForKey.add(getBuildMutatorForFile(sourceFileToChange));
         }
 
-        return new CompositeBuildMutator(mutatorsForKey);
+        return CompositeBuildMutator.from(mutatorsForKey);
     }
 
     private BuildMutator getBuildMutatorForFile(File sourceFileToChange) {

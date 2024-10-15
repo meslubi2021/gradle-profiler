@@ -25,24 +25,24 @@ val profilerPlugins by configurations.creating
 dependencies {
     implementation(libs.toolingApi)
     implementation("com.google.code.findbugs:annotations:3.0.1")
-    implementation("com.google.guava:guava:27.1-android") {
-        because("Gradle uses the android variant as well and we are running the same code there.")
-    }
+    implementation("com.google.guava:guava:32.1.2-jre")
     implementation("com.typesafe:config:1.3.3")
     implementation("org.apache.commons:commons-math3:3.6.1")
     implementation("com.github.javaparser:javaparser-core:3.18.0")
     implementation("net.sf.jopt-simple:jopt-simple:5.0.4")
     implementation("org.apache.ant:ant-compress:1.5")
-    implementation("commons-io:commons-io:2.6")
+    implementation("org.apache.commons:commons-compress:1.27.1") {
+        because("Avoid old version of commons-compress introduced by ant-compress")
+    }
+    implementation("commons-io:commons-io:2.16.1")
     implementation("org.openjdk.jmc:flightrecorder:8.0.1")
     implementation("com.googlecode.plist:dd-plist:1.23") {
         because("To extract launch details from Android Studio installation")
     }
-    implementation("com.google.code.gson:gson:2.8.6") {
+    implementation("com.google.code.gson:gson:2.11.0") {
         because("To write JSON output")
     }
     implementation(project(":client-protocol"))
-
 
     gradleRuntime(gradleApi())
     gradleRuntime(libs.toolingApi)
@@ -107,7 +107,7 @@ tasks.test {
             .getOrElse(JavaVersion.current().majorVersion)
         languageVersion.set(JavaLanguageVersion.of(javaVersion))
         providers.gradleProperty("testJavaVendor").map {
-            when (it.toLowerCase()) {
+            when (it.lowercase()) {
                 "oracle" -> vendor.set(JvmVendorSpec.ORACLE)
                 "openjdk" -> vendor.set(JvmVendorSpec.ADOPTIUM)
             }
@@ -130,9 +130,8 @@ androidStudioTests {
     val autoDownloadAndRunInHeadless = providers.gradleProperty("autoDownloadAndRunInHeadless").orNull == "true"
     runAndroidStudioInHeadlessMode.set(autoDownloadAndRunInHeadless)
     autoDownloadAndroidStudio.set(autoDownloadAndRunInHeadless)
-    // Hedgehog (2023.1.1.6) Canary 6
-    testAndroidStudioVersion.set("2023.1.1.6")
-    testAndroidSdkVersion.set("7.3.0")
+    testAndroidStudioVersion.set(libs.versions.testAndroidStudioVersion)
+    testAndroidSdkVersion.set(libs.versions.testAndroidSdkVersion)
     // For local development it's easier to setup Android SDK with Android Studio, since auto download needs ANDROID_HOME or ANDROID_SDK_ROOT
     // to be set with an accepted license in it. See https://developer.android.com/studio/intro/update.html#download-with-gradle.
     autoDownloadAndroidSdk.set(autoDownloadAndRunInHeadless)
@@ -152,7 +151,7 @@ testReports.forEach { taskName, fileName ->
         inputs.files(tasks.processResources)
 
         from("src/main/resources/org/gradle/profiler/report")
-        into("$buildDir/test-html-report")
+        into(layout.buildDirectory.dir("test-html-report"))
         rename("report-template.html", "test-report-${fileName}.html")
         filter { line ->
             if (line == "@@BENCHMARK_RESULT_JSON@@") dataFile.readText()
@@ -238,7 +237,7 @@ tasks.register("releaseToSdkMan") {
     val versionString = project.version.toString()
 
     // We don't publish snapshots and alphas at all to SDKman.
-    val isSnapshotOrAlphaRelease = versionString.toLowerCase(Locale.US).run { contains("snapshot") || contains("alpha") }
+    val isSnapshotOrAlphaRelease = versionString.lowercase(Locale.US).run { contains("snapshot") || contains("alpha") }
     if (!isSnapshotOrAlphaRelease) {
         dependsOn(tasks.withType<SdkReleaseVersionTask>())
 

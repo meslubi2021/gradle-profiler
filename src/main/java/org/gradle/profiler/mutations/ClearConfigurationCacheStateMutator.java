@@ -1,19 +1,17 @@
 package org.gradle.profiler.mutations;
 
-import com.typesafe.config.Config;
 import org.apache.commons.io.FileUtils;
 import org.gradle.profiler.BuildInvoker;
 import org.gradle.profiler.BuildMutator;
-import org.gradle.profiler.InvocationSettings;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 
-public class ClearConfigurationCacheStateMutator extends AbstractCleanupMutator {
+public class ClearConfigurationCacheStateMutator extends AbstractScheduledMutator {
     private final File projectDir;
 
-    public ClearConfigurationCacheStateMutator(File projectDir, CleanupSchedule schedule) {
+    public ClearConfigurationCacheStateMutator(File projectDir, Schedule schedule) {
         super(schedule);
         this.projectDir = projectDir;
     }
@@ -24,7 +22,7 @@ public class ClearConfigurationCacheStateMutator extends AbstractCleanupMutator 
     }
 
     @Override
-    protected void cleanup() {
+    protected void executeOnSchedule() {
         System.out.println("> Cleaning configuration cache state");
         cleanup(new File(projectDir, ".gradle/configuration-cache"));
         cleanup(new File(projectDir, ".instant-execution-state"));
@@ -38,10 +36,10 @@ public class ClearConfigurationCacheStateMutator extends AbstractCleanupMutator 
         }
     }
 
-    public static class Configurator extends AbstractCleanupMutator.Configurator {
+    public static class Configurator extends AbstractScheduledMutator.Configurator {
         @Override
-        protected BuildMutator newInstance(Config scenario, String scenarioName, InvocationSettings settings, String key, CleanupSchedule schedule) {
-            return new ClearConfigurationCacheStateMutator(settings.getProjectDir(), schedule);
+        protected BuildMutator newInstance(BuildMutatorConfiguratorSpec spec, String key, Schedule schedule) {
+            return new ClearConfigurationCacheStateMutator(spec.getProjectDir(), schedule);
         }
     }
 }

@@ -10,7 +10,7 @@ import org.gradle.profiler.bazel.BazelScenarioDefinition;
 import org.gradle.profiler.buck.BuckScenarioDefinition;
 import org.gradle.profiler.gradle.*;
 import org.gradle.profiler.maven.MavenScenarioDefinition;
-import org.gradle.profiler.mutations.AbstractCleanupMutator.CleanupSchedule;
+import org.gradle.profiler.mutations.AbstractScheduledMutator.Schedule;
 import org.gradle.profiler.mutations.ApplyAbiChangeToSourceFileMutator;
 import org.gradle.profiler.mutations.ApplyBuildScriptChangeFileMutator;
 import org.gradle.profiler.mutations.ApplyChangeToAndroidLayoutFileMutator;
@@ -24,15 +24,18 @@ import org.gradle.profiler.mutations.ApplyProjectDependencyChangeMutator;
 import org.gradle.profiler.mutations.ApplyValueChangeToAndroidResourceFileMutator;
 import org.gradle.profiler.mutations.BuildMutatorConfigurator;
 import org.gradle.profiler.mutations.BuildMutatorConfigurator.BuildMutatorConfiguratorSpec;
+import org.gradle.profiler.mutations.DefaultBuildMutatorConfiguratorSpec;
 import org.gradle.profiler.mutations.ClearArtifactTransformCacheMutator;
 import org.gradle.profiler.mutations.ClearBuildCacheMutator;
 import org.gradle.profiler.mutations.ClearConfigurationCacheStateMutator;
 import org.gradle.profiler.mutations.ClearGradleUserHomeMutator;
 import org.gradle.profiler.mutations.ClearJarsCacheMutator;
 import org.gradle.profiler.mutations.ClearProjectCacheMutator;
+import org.gradle.profiler.mutations.CopyFileMutator;
 import org.gradle.profiler.mutations.FileChangeMutatorConfigurator;
 import org.gradle.profiler.mutations.GitCheckoutMutator;
 import org.gradle.profiler.mutations.GitRevertMutator;
+import org.gradle.profiler.mutations.DeleteFileMutator;
 import org.gradle.profiler.mutations.ShowBuildCacheSizeMutator;
 import org.gradle.profiler.studio.AndroidStudioSyncAction;
 import org.gradle.profiler.studio.invoker.StudioGradleScenarioDefinition;
@@ -91,6 +94,8 @@ class ScenarioLoader {
     private static final String ANDROID_STUDIO_JVM_ARGS = "studio-jvm-args";
     private static final String ANDROID_STUDIO_IDEA_PROPERTIES = "idea-properties";
     private static final String JVM_ARGS = "jvm-args";
+    private static final String DELETE_FILE = "delete-file";
+    private static final String COPY_FILE = "copy-file";
 
     private static final Map<String, BuildMutatorConfigurator> BUILD_MUTATOR_CONFIGURATORS = ImmutableMap.<String, BuildMutatorConfigurator>builder()
         .put(APPLY_BUILD_SCRIPT_CHANGE_TO, new FileChangeMutatorConfigurator(ApplyBuildScriptChangeFileMutator.class))
@@ -115,6 +120,8 @@ class ScenarioLoader {
         .put(SHOW_BUILD_CACHE_SIZE, new ShowBuildCacheSizeMutator.Configurator())
         .put(GIT_CHECKOUT, new GitCheckoutMutator.Configurator())
         .put(GIT_REVERT, new GitRevertMutator.Configurator())
+        .put(DELETE_FILE, new DeleteFileMutator.Configurator())
+        .put(COPY_FILE, new CopyFileMutator.Configurator())
         .build();
 
     private static final List<String> ALL_SCENARIO_KEYS = ImmutableList.<String>builder()
@@ -231,7 +238,7 @@ class ScenarioLoader {
             String title = scenario.hasPath(TITLE) ? scenario.getString(TITLE) : null;
 
             int buildCount = getBuildCount(settings, scenario);
-            File scenarioBaseDir = selectedScenarios.size() == 1 ? settings.getOutputDir() : new File(settings.getOutputDir(), GradleScenarioDefinition.safeFileName(scenarioName));
+            File scenarioBaseDir = selectedScenarios.size() == 1 ? settings.getOutputDir() : new File(settings.getOutputDir(), ScenarioDefinition.safeFileName(scenarioName));
 
             if (scenario.hasPath(BAZEL) && settings.isBazel()) {
                 Config executionInstructions = getConfig(scenarioFile, settings, scenarioName, scenario, BAZEL, BAZEL_KEYS);
@@ -257,8 +264,9 @@ class ScenarioLoader {
                 File mavenHome = getToolHome(executionInstructions);
                 File outputDir = new File(scenarioBaseDir, "maven");
                 int warmUpCount = getWarmUpCount(settings, scenario);
+                Map<String, String> systemProperties = ConfigUtil.map(scenario, SYSTEM_PROPERTIES, settings.getSystemProperties());
                 List<BuildMutator> mutators = getMutators(scenario, scenarioName, settings, warmUpCount, buildCount);
-                definitions.add(new MavenScenarioDefinition(scenarioName, title, targets, mutators, warmUpCount, buildCount, outputDir, mavenHome));
+                definitions.add(new MavenScenarioDefinition(scenarioName, title, targets, systemProperties, mutators, warmUpCount, buildCount, outputDir, mavenHome));
             } else if (!settings.isBazel() && !settings.isBuck() && !settings.isMaven()) {
                 List<GradleBuildConfiguration> versions = ConfigUtil.strings(scenario, VERSIONS, settings.getVersions()).stream().map(inspector::readConfiguration).collect(
                     Collectors.toList());
@@ -314,7 +322,7 @@ class ScenarioLoader {
     }
 
     private static List<BuildMutator> getMutators(Config scenario, String scenarioName, InvocationSettings settings, int warmUpCount, int buildCount) {
-        BuildMutatorConfiguratorSpec spec = new BuildMutatorConfiguratorSpec(scenario, scenarioName, settings, warmUpCount, buildCount);
+        BuildMutatorConfiguratorSpec spec = new DefaultBuildMutatorConfiguratorSpec(scenario, scenarioName, settings, warmUpCount, buildCount);
         return BUILD_MUTATOR_CONFIGURATORS.entrySet().stream()
             .filter(entry -> scenario.hasPath(entry.getKey()))
             .map(entry -> entry.getValue().configure(entry.getKey(), spec))
@@ -323,8 +331,8 @@ class ScenarioLoader {
     }
 
     private static Config getConfig(File scenarioFile, InvocationSettings settings, String scenarioName, Config scenario, String toolName, List<String> toolKeys) {
-        if (settings.isProfile()) {
-            throw new IllegalArgumentException("Can only profile scenario '" + scenarioName + "' when building using Gradle.");
+        if (settings.getProfiler().requiresGradle()) {
+            throw new IllegalArgumentException("Profiler " + settings.getProfiler() + " is not compatible with " + toolName + " scenarios.");
         }
         Config executionInstructions = scenario.getConfig(toolName);
         for (String key : scenario.getObject(toolName).keySet()) {
@@ -436,7 +444,7 @@ class ScenarioLoader {
     }
 
     private static GradleBuildInvoker getAndroidStudioInvoker(Config config) {
-        CleanupSchedule schedule = ConfigUtil.enumValue(config, CLEAR_ANDROID_STUDIO_CACHE_BEFORE, CleanupSchedule.class, null);
+        Schedule schedule = ConfigUtil.enumValue(config, CLEAR_ANDROID_STUDIO_CACHE_BEFORE, Schedule.class, null);
         if (schedule == null) {
             return GradleBuildInvoker.AndroidStudio;
         }

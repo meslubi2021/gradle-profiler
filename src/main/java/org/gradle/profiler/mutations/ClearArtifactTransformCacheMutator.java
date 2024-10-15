@@ -1,14 +1,12 @@
 package org.gradle.profiler.mutations;
 
-import com.typesafe.config.Config;
 import org.gradle.profiler.BuildMutator;
-import org.gradle.profiler.InvocationSettings;
 
 import java.io.File;
 
 public class ClearArtifactTransformCacheMutator extends AbstractCacheCleanupMutator {
 
-    public ClearArtifactTransformCacheMutator(File gradleUserHome, CleanupSchedule schedule) {
+    public ClearArtifactTransformCacheMutator(File gradleUserHome, Schedule schedule) {
         super(gradleUserHome, schedule, "transforms-");
     }
 
@@ -17,10 +15,10 @@ public class ClearArtifactTransformCacheMutator extends AbstractCacheCleanupMuta
         delete(cacheDir);
     }
 
-    public static class Configurator extends AbstractCleanupMutator.Configurator {
+    public static class Configurator extends AbstractScheduledMutator.Configurator {
         @Override
-        protected BuildMutator newInstance(Config scenario, String scenarioName, InvocationSettings settings, String key, CleanupSchedule schedule) {
-            return new ClearArtifactTransformCacheMutator(settings.getGradleUserHome(), schedule);
+        protected BuildMutator newInstance(BuildMutatorConfiguratorSpec spec, String key, Schedule schedule) {
+            return new ClearArtifactTransformCacheMutator(spec.getGradleUserHome(), schedule);
         }
     }
 }
